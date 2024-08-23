@@ -2,10 +2,10 @@
   "name": "ali-oss-put-cli",
   "version": "1.0.0",
   "description": "https://www.npmjs.com/package/oss-client https://www.npmjs.com/package/ali-oss",
-  "main": "index.js",
   "scripts": {
     "dev": "tsc --watch",
-    "build": " tsc --build"
+    "play": "jiti playground",
+    "build": "unbuild"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +16,21 @@
     "eslint": "^9.9.0"
   },
   "bin": {
-    "ali-oss-put": "dist/index.js"
+    "ali-oss-put": "dist/index.cjs"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "jiti": "^1.21.6"
   }
 }
