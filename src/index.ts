@@ -1,37 +1,76 @@
 #!/usr/bin/env node
-import {program} from "commander";
+import { program } from "commander";
 import OssUpload from "./oss_upload";
-import {version, name} from "../package.json";
+import { version, name } from "../package.json";
 
-
-interface OssPutOptions {
-    key: string;
-    secret: string;
-    bucket: string;
-    ossPath: string;
-    region: string;
-    localPath: string;
+// 定义配置接口
+interface OssConfig {
+  key: string;
+  secret: string;
+  bucket: string;
+  region: string;
 }
 
+interface UploadOptions {
+  ossPath: string;
+  localPath: string;
+}
 
-program.name(name)
-    .description("Upload files or folders to AliCloud OSS")
-    .version(version)
-    .requiredOption('--key <key>', 'Alibaba Cloud OSS access key ID, cannot be empty')
-    .requiredOption('--secret <secret>', 'Alibaba Cloud OSS access key secret, cannot be empty')
-    .requiredOption('--bucket <bucket>', 'OSS storage space name, cannot be empty')
-    .requiredOption('--ossPath <ossPath>', 'Root path in OSS, cannot be empty')
-    .requiredOption('--region <region>', 'The region where the OSS service is located, such as cn-hangzhou, cannot be empty')
-    .requiredOption('--localPath <localPath>', 'Local folder path, cannot be empty');
+type OssPutOptions = OssConfig & UploadOptions;
+
+// 定义命令行参数配置
+const commandOptions = {
+  key: {
+    flag: "--key <key>",
+    desc: "Alibaba Cloud OSS access key ID",
+    required: true,
+  },
+  secret: {
+    flag: "--secret <secret>",
+    desc: "Alibaba Cloud OSS access key secret",
+    required: true,
+  },
+  bucket: {
+    flag: "--bucket <bucket>",
+    desc: "OSS storage space name",
+    required: true,
+  },
+  region: {
+    flag: "--region <region>",
+    desc: "The region where the OSS service is located (e.g. cn-hangzhou)",
+    required: true,
+  },
+  ossPath: {
+    flag: "--ossPath <ossPath>",
+    desc: "Root path in OSS",
+    required: true,
+  },
+  localPath: {
+    flag: "--localPath <localPath>",
+    desc: "Local folder path",
+    required: true,
+  },
+};
+
+program
+  .name(name)
+  .description("Upload files or folders to AliCloud OSS")
+  .version(version);
+
+// 动态添加命令行选项
+Object.entries(commandOptions).forEach(([_, opt]) => {
+  program.requiredOption(opt.flag, opt.desc);
+});
 
 program.parse();
 
-// 获取并验证参数
 const options = program.opts<OssPutOptions>();
 
-// 参数解释
-// console.log('\n参数说明:',JSON.parse(JSON.stringify(options, null, 2)));
+const ossUpload = new OssUpload(
+  options.key,
+  options.secret,
+  options.bucket,
+  options.region
+);
 
-const ossUpload = new OssUpload(options.key, options.secret, options.bucket, options.region);
-
-ossUpload.uploadFileToOSS(options.localPath, options.ossPath)
+ossUpload.uploadFileToOSS(options.localPath, options.ossPath);

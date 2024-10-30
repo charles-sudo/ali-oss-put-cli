@@ -2,18 +2,23 @@ import OSS from "ali-oss";
 import fs from "fs";
 import path from "path";
 
-// 配置信息
-// const accessKeyId = "";
-// const accessKeySecret = "";
-// const bucketName = "";
-// const rootPathInOSS = ""; // 例如: 'myfolder/'
-// const region = ""; // 例如: 'oss-cn-hangzhou'
-// const localFolderPath = "../dist"; // 本地文件夹路径
+interface UploadStats {
+    folderCount: number;
+    fileCount: number;
+    failedFiles: string[];
+    totalBytes: number;
+}
 
 class OssUpload {
     private client: OSS;
-    private folderCount:number = 0
-    private fileCount:number = 0
+    private stats: UploadStats = {
+        folderCount: 0,
+        fileCount: 0,
+        failedFiles: [],
+        totalBytes: 0
+    };
+    private readonly MAX_RETRIES = 3;
+    private readonly MAX_CONCURRENT = 5;
 
     constructor(accessKeyId: string, accessKeySecret: string, bucketName: string, region: string) {
         this.client = new OSS({
@@ -21,81 +26,98 @@ class OssUpload {
             accessKeyId,
             accessKeySecret,
             bucket: bucketName,
+            timeout: 120000 // 2分钟超时
         });
     }
 
-
-    public async uploadFileToOSS(localFilePath: string, rootPathInOSS: string) {
-
-        // 开始计时
+    public async uploadFileToOSS(localFilePath: string, rootPathInOSS: string): Promise<UploadStats> {
         const startTime = Date.now();
-        // 调用函数开始上传
-        this.uploadFolderToOSS(localFilePath, rootPathInOSS)
-            .then(() => {
 
-                console.log(`Total folders uploaded: ${this.folderCount}`);
-                console.log(`Total files uploaded: ${this.fileCount}`);
-                // 结束计时
-                const endTime = Date.now();
-                const totalTime = (endTime - startTime) / 1000; // 总时间秒数
+        try {
+            await this.uploadFolderToOSS(localFilePath, rootPathInOSS);
 
-                console.log(`Total time taken: ${totalTime.toFixed(2)} seconds`);
-            })
-            .catch(err => console.error('Error uploading:', err));
+            const endTime = Date.now();
+            const totalTime = (endTime - startTime) / 1000;
 
+            console.log(`上传完成:`);
+            console.log(`- 总文件夹数: ${this.stats.folderCount}`);
+            console.log(`- 总文件数: ${this.stats.fileCount}`);
+            console.log(`- 总大小: ${(this.stats.totalBytes / 1024 / 1024).toFixed(2)} MB`);
+            console.log(`- 耗时: ${totalTime.toFixed(2)} 秒`);
+
+            if (this.stats.failedFiles.length > 0) {
+                console.error(`失败文件数: ${this.stats.failedFiles.length}`);
+                console.error('失败文件列表:', this.stats.failedFiles);
+            }
+
+            return this.stats;
+        } catch (err) {
+            console.error('上传过程发生错误:', err);
+            throw err;
+        }
     }
 
     private async uploadFolderToOSS(localFolderPath: string, remoteFolderPath: string) {
-
-        // 读取文件夹中的所有文件
         const files = fs.readdirSync(localFolderPath);
+        this.stats.folderCount++;
 
-        this.folderCount++; // 增加文件夹计数
+        // 对文件进行排序，将 index.html 放到最后
+        const sortedFiles = files.sort((a, b) => {
+            if (a === 'index.html') return 1;
+            if (b === 'index.html') return -1;
+            return 0;
+        });
 
-        // 分离 index.html 文件
-        const nonIndexFiles = files.filter(file => file !== 'index.html');
-        const indexFile = files.find(file => file === 'index.html');
+        const uploadTasks: Promise<void>[] = [];
+        const concurrentQueue = new Set<Promise<void>>();
 
-        for (const file of nonIndexFiles) {
+        for (const file of sortedFiles) {
             const filePath = path.join(localFolderPath, file);
-            const key = path.join(remoteFolderPath, file); // OSS中的路径
+            const key = path.join(remoteFolderPath, file);
 
-            try {
-                // 检查是否为文件夹
-                if (fs.lstatSync(filePath).isDirectory()) {
-                    // 如果是文件夹，则递归调用函数
-                    await this.uploadFolderToOSS(filePath, path.join(remoteFolderPath, file));
-                } else {
-                    // 上传文件
-                    this.fileCount++; // 增加文件计数
-                    console.log(`Uploading ${filePath} --> OSS ${key}`);
-                    await this.client.put(key, filePath);
-
-                }
-            } catch (err: any) {
-                console.error(`Failed to upload ${filePath}: ${err?.message}`);
+            if (fs.lstatSync(filePath).isDirectory()) {
+                await this.uploadFolderToOSS(filePath, key);
+                continue;
             }
+
+            const uploadTask = this.uploadFileWithRetry(filePath, key);
+            uploadTasks.push(uploadTask);
+
+            // 控制并发数
+            if (concurrentQueue.size >= this.MAX_CONCURRENT) {
+                await Promise.race([...concurrentQueue]);
+            }
+
+            const promise = uploadTask.finally(() => {
+                concurrentQueue.delete(promise);
+            });
+            concurrentQueue.add(promise);
         }
 
-        // 特殊处理 index.html 文件
-        if (indexFile) {
-            const indexPath = path.join(localFolderPath, indexFile);
-            const indexKey = path.join(remoteFolderPath, indexFile); // OSS中的路径
+        await Promise.all(uploadTasks);
+    }
 
-            try {
-                if (!fs.lstatSync(indexPath).isDirectory()) {
-                    // 上传 index.html 文件
-                    this.fileCount++; // 增加文件计数
-                    console.log(`Uploading ${indexPath} --> OSS ${indexKey}`);
-                    await this.client.put(indexKey, indexPath);
-                }
-            } catch (err: any) {
-                console.error(`Failed to upload ${indexPath}: ${err?.message}`);
+    private async uploadFileWithRetry(filePath: string, key: string, retryCount = 0): Promise<void> {
+        try {
+            const fileSize = fs.statSync(filePath).size;
+            this.stats.totalBytes += fileSize;
+            this.stats.fileCount++;
+
+            console.log(`正在上传 ${filePath} -> OSS ${key} (${(fileSize / 1024).toFixed(2)} KB)`);
+            await this.client.put(key, filePath);
+
+        } catch (err) {
+            if (retryCount < this.MAX_RETRIES) {
+                console.warn(`上传失败，正在重试 (${retryCount + 1}/${this.MAX_RETRIES}): ${filePath}`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+                return this.uploadFileWithRetry(filePath, key, retryCount + 1);
             }
+
+            this.stats.failedFiles.push(filePath);
+            console.error(`上传失败 ${filePath}: ${err}`);
+            throw err;
         }
     }
 }
-
-
 
 export default OssUpload;
