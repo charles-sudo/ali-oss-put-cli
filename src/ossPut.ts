@@ -9,7 +9,7 @@ interface UploadStats {
     totalBytes: number;
 }
 
-class OssUpload {
+class OssPut {
     private client: OSS;
     private stats: UploadStats = {
         folderCount: 0,
@@ -30,11 +30,11 @@ class OssUpload {
         });
     }
 
-    public async uploadFileToOSS(localFilePath: string, rootPathInOSS: string): Promise<UploadStats> {
+    public async putFileToOSS(localFilePath: string, rootPathInOSS: string): Promise<UploadStats> {
         const startTime = Date.now();
 
         try {
-            await this.uploadFolderToOSS(localFilePath, rootPathInOSS);
+            await this.putFolderToOSS(localFilePath, rootPathInOSS);
 
             const endTime = Date.now();
             const totalTime = (endTime - startTime) / 1000;
@@ -57,7 +57,7 @@ class OssUpload {
         }
     }
 
-    private async uploadFolderToOSS(localFolderPath: string, remoteFolderPath: string) {
+    private async putFolderToOSS(localFolderPath: string, remoteFolderPath: string) {
         const files = fs.readdirSync(localFolderPath);
         this.stats.folderCount++;
 
@@ -68,7 +68,7 @@ class OssUpload {
             return 0;
         });
 
-        const uploadTasks: Promise<void>[] = [];
+        const putTasks: Promise<void>[] = [];
         const concurrentQueue = new Set<Promise<void>>();
 
         for (const file of sortedFiles) {
@@ -76,28 +76,28 @@ class OssUpload {
             const key = path.join(remoteFolderPath, file);
 
             if (fs.lstatSync(filePath).isDirectory()) {
-                await this.uploadFolderToOSS(filePath, key);
+                await this.putFolderToOSS(filePath, key);
                 continue;
             }
 
-            const uploadTask = this.uploadFileWithRetry(filePath, key);
-            uploadTasks.push(uploadTask);
+            const putTask = this.putFileWithRetry(filePath, key);
+            putTasks.push(putTask);
 
             // 控制并发数
             if (concurrentQueue.size >= this.MAX_CONCURRENT) {
                 await Promise.race([...concurrentQueue]);
             }
 
-            const promise = uploadTask.finally(() => {
+            const promise = putTask.finally(() => {
                 concurrentQueue.delete(promise);
             });
             concurrentQueue.add(promise);
         }
 
-        await Promise.all(uploadTasks);
+        await Promise.all(putTasks);
     }
 
-    private async uploadFileWithRetry(filePath: string, key: string, retryCount = 0): Promise<void> {
+    private async putFileWithRetry(filePath: string, key: string, retryCount = 0): Promise<void> {
         try {
             const fileSize = fs.statSync(filePath).size;
             this.stats.totalBytes += fileSize;
@@ -110,7 +110,7 @@ class OssUpload {
             if (retryCount < this.MAX_RETRIES) {
                 console.warn(`上传失败，正在重试 (${retryCount + 1}/${this.MAX_RETRIES}): ${filePath}`);
                 await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-                return this.uploadFileWithRetry(filePath, key, retryCount + 1);
+                return this.putFileWithRetry(filePath, key, retryCount + 1);
             }
 
             this.stats.failedFiles.push(filePath);
@@ -120,4 +120,4 @@ class OssUpload {
     }
 }
 
-export default OssUpload;
+export default OssPut;
