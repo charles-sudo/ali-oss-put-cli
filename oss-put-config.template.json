@@ -1,0 +1,8 @@
+{
+    "key": "your-access-key",
+    "secret": "your-access-secret",
+    "bucket": "your-bucket-name",
+    "region": "your-region",
+    "ossPath": "/",
+    "localPath": "dist"
+}
