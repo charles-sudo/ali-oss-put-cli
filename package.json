@@ -4,7 +4,6 @@
   "description": "https://www.npmjs.com/package/oss-client https://www.npmjs.com/package/ali-oss",
   "scripts": {
     "dev": "tsc --watch",
-    "play": "jiti playground",
     "build": "unbuild && npm link"
   },
   "keywords": [],
@@ -32,7 +31,6 @@
   "devDependencies": {
     "@types/node": "^22.5.0",
     "@types/ali-oss": "^6.16.11",
-    "jiti": "^1.21.6",
     "unbuild": "^2.0.0",
     "@typescript-eslint/eslint-plugin": "^8.2.0",
     "@typescript-eslint/parser": "^8.2.0",

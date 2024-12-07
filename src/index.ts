@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { program } from "commander";
-import OssPut from "./ossPut";
+
 import { version, name } from "../package.json";
 import fs from 'fs';
 import path from 'path';
+import OssPut from "./ossPut";
 
 // 定义配置接口
 interface OssConfig {
