@@ -124,6 +124,8 @@ async function main() {
     ...Object.fromEntries(Object.entries(cliOptions).filter(([_, value]) => value !== undefined)),
   };
 
+  console.log(options);
+
   if (!validateConfig(options)) {
     process.exit(1);
   }
