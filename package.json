@@ -10,7 +10,6 @@
   "scripts": {
     "dev": "rslib build --watch",
     "build": "rslib build",
-    "prepublishOnly": "npm run build",
     "lint": "eslint . --ext .ts"
   },
   "keywords": [
