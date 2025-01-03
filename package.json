@@ -1,6 +1,6 @@
 {
   "name": "ali-oss-put-cli",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "一个用于上传文件和文件夹到阿里云 OSS 的命令行工具，支持并发上传、自动重试，并提供命令行和配置文件两种灵活的配置方式。",
   "homepage": "https://github.com/charles-sudo/ali-oss-put-cli",
   "repository": {
